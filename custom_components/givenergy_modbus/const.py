@@ -1,4 +1,4 @@
-"""Constants for GivEnergy Modbus."""
+"""Constants for GivEnergy Gateway Modbus Coms."""
 DOMAIN = "givenergy_modbus"
 DEFAULT_PORT = 8899
 DEFAULT_SCAN_INTERVAL = 15

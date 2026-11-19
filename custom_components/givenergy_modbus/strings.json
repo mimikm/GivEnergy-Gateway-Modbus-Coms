@@ -23,7 +23,7 @@
   "options": {
     "step": {
       "init": {
-        "title": "GivEnergy Modbus options",
+        "title": "GivEnergy Gateway Modbus Coms options",
         "data": {
           "scan_interval": "Poll interval (seconds)",
           "slow_every": "Read settings registers every N polls"
@@ -38,7 +38,7 @@
       "fields": {
         "config_entry": {
           "name": "Device",
-          "description": "GivEnergy Modbus entry to probe."
+          "description": "GivEnergy Gateway Modbus Coms entry to probe."
         }
       }
     },
@@ -48,7 +48,7 @@
       "fields": {
         "config_entry": {
           "name": "Device",
-          "description": "GivEnergy Modbus entry."
+          "description": "GivEnergy Gateway Modbus Coms entry."
         },
         "register_type": {
           "name": "Register type",
@@ -74,7 +74,7 @@
       "fields": {
         "config_entry": {
           "name": "Device",
-          "description": "GivEnergy Modbus entry."
+          "description": "GivEnergy Gateway Modbus Coms entry."
         },
         "register": {
           "name": "Register",

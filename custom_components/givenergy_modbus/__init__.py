@@ -1,4 +1,4 @@
-"""GivEnergy Modbus — local integration for GivEnergy inverters, AIO and Gateway."""
+"""GivEnergy Gateway Modbus Coms — local integration for GivEnergy inverters, AIO and Gateway."""
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -79,7 +79,7 @@ async def async_unload_entry(hass: HomeAssistant, entry: GivEnergyConfigEntry) -
 def _entry_from_call(hass: HomeAssistant, call: ServiceCall) -> GivEnergyConfigEntry:
     entry = hass.config_entries.async_get_entry(call.data["config_entry"])
     if entry is None or entry.domain != DOMAIN or not hasattr(entry, "runtime_data"):
-        raise ServiceValidationError("Unknown or not-loaded GivEnergy Modbus entry")
+        raise ServiceValidationError("Unknown or not-loaded GivEnergy Gateway Modbus Coms entry")
     return entry
 
 
