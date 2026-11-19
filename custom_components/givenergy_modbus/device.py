@@ -21,11 +21,10 @@ from .registers import (
     FAMILY_AIO,
     FAMILY_GATEWAY,
     FAMILY_HYBRID,
-    FAST_BLOCKS,
     GATEWAY_BLOCKS,
     HR,
+    IR,
     INVERTER_ADDRESSES,
-    SLOW_BLOCKS,
     WRITE_SAFE_REGISTERS,
     Block,
     DeviceInfo,
@@ -54,9 +53,8 @@ class RegisterBank:
 
 
 class GivEnergyDevice:
-    def __init__(self, client: GivEnergyClient, slow_every: int = 5) -> None:
+    def __init__(self, client: GivEnergyClient) -> None:
         self.client = client
-        self.slow_every = max(1, slow_every)
         self.address: int = INVERTER_ADDRESSES[0]
         self.info: DeviceInfo | None = None
         self.blocks: list[Block] = []
@@ -66,8 +64,6 @@ class GivEnergyDevice:
         self.batteries: dict[int, RegisterBank] = {}
         self.battery_serials: dict[int, str] = {}
         self.block_failures: dict[str, int] = {}
-        self._cycle = 0
-        self._force_slow = True
         client.on_unsolicited = self._on_unsolicited
 
     # ------------------------------------------------------------------ util
@@ -121,7 +117,7 @@ class GivEnergyDevice:
         candidates: list[Block] = []
         if info.family == FAMILY_GATEWAY:
             candidates += GATEWAY_BLOCKS
-        candidates += FAST_BLOCKS + SLOW_BLOCKS[1:] + [EXTENDED_SLOT_BLOCK, AC_CONFIG_BLOCK]
+        candidates += [IR(0), IR(180), HR(60), HR(120), EXTENDED_SLOT_BLOCK, AC_CONFIG_BLOCK]
 
         self.blocks = [HR(0)]
         self.blocks_ok = {"HR0"}
@@ -159,17 +155,14 @@ class GivEnergyDevice:
 
         if not any(b.input for b in self.blocks):
             raise ProbeFailed("device answered config registers but no live data blocks")
-        self._force_slow = False
-        self._cycle = 0
         return info
 
     # ------------------------------------------------------------------ poll
-    async def poll(self) -> None:
-        self._cycle += 1
-        slow = self._force_slow or self._cycle % self.slow_every == 0
+    async def poll(self, block_keys: set[str] | None = None, batteries: bool = True) -> None:
+        """Read the given register blocks (None = all probed blocks) and battery packs."""
         attempted = ok = 0
         for block in self.blocks:
-            if not block.input and not slow:
+            if block_keys is not None and block.key not in block_keys:
                 continue
             attempted += 1
             try:
@@ -182,21 +175,17 @@ class GivEnergyDevice:
                 continue
             self.inverter.store(block.input, block.base, vals)
             ok += 1
-        for addr, bank in self.batteries.items():
-            try:
-                vals = await self._read(addr, BATTERY_BLOCK, timeout=2.0, retries=0)
-                bank.store(True, BATTERY_BLOCK.base, vals)
-            except GivEnergyConnectionError:
-                raise
-            except GivEnergyError as err:
-                _LOGGER.debug("Battery 0x%02X poll failed: %s", addr, err)
+        if batteries:
+            for addr, bank in self.batteries.items():
+                try:
+                    vals = await self._read(addr, BATTERY_BLOCK, timeout=2.0, retries=0)
+                    bank.store(True, BATTERY_BLOCK.base, vals)
+                except GivEnergyConnectionError:
+                    raise
+                except GivEnergyError as err:
+                    _LOGGER.debug("Battery 0x%02X poll failed: %s", addr, err)
         if attempted and not ok:
             raise GivEnergyError("no register block could be read this cycle")
-        if slow:
-            self._force_slow = False
-
-    def request_slow_refresh(self) -> None:
-        self._force_slow = True
 
     # ----------------------------------------------------------------- write
     async def write(self, register: int, value: int) -> None:

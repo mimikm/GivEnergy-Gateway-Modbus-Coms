@@ -7,7 +7,8 @@ from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
 from . import GivEnergyConfigEntry
-from .entity import GivEnergyEntity, main_device_info
+from .entity import GivEnergyEntity, section_device_info
+from .registers import SECTION_SYSTEM
 
 
 async def async_setup_entry(hass: HomeAssistant, entry: GivEnergyConfigEntry, add: AddEntitiesCallback) -> None:
@@ -19,7 +20,7 @@ class ReprobeButton(GivEnergyEntity, ButtonEntity):
     _attr_icon = "mdi:radar"
 
     def __init__(self, coordinator, entry_id: str) -> None:
-        super().__init__(coordinator, "reprobe", "Re-probe registers", main_device_info(coordinator))
+        super().__init__(coordinator, "reprobe", "Re-probe registers", section_device_info(coordinator, SECTION_SYSTEM))
         self._entry_id = entry_id
 
     async def async_press(self) -> None:

@@ -3,18 +3,36 @@
     "step": {
       "user": {
         "title": "Connect to a GivEnergy device",
-        "description": "Enter the IP of the inverter dongle, AIO or Gateway. The integration probes it and works out the model and which registers it answers. Stop GivTCP for this device first \u2014 the dongle only serves one client at a time.",
+        "description": "Enter the IP of the inverter dongle, AIO or Gateway. The integration probes it and works out the model and which registers it answers. Stop GivTCP for this device first, because the dongle only serves one client at a time.",
         "data": {
           "host": "IP address",
-          "port": "Port",
-          "scan_interval": "Poll interval (seconds)"
+          "port": "Port"
+        }
+      },
+      "sections": {
+        "title": "Name and sections",
+        "description": "Found **{model}** (serial {serial}, {batteries} battery pack(s)).\n\nEntities are split into four devices. Turn off any section you don't need. It won't be polled and its entities won't be created.\n\n- **Power**: live power flows (W) and SOC\n- **Energy**: today and lifetime kWh counters\n- **Controls**: modes, slots, SOC targets and limits\n- **System**: status, voltages, currents, temperatures, faults and battery packs\n\nThe device name is used as the prefix for all four devices and their entity IDs.",
+        "data": {
+          "device_name": "Device name",
+          "power_enabled": "Power: poll this section",
+          "power_interval": "Power: poll interval (seconds)",
+          "energy_enabled": "Energy: poll this section",
+          "energy_interval": "Energy: poll interval (seconds)",
+          "controls_enabled": "Controls: poll this section",
+          "controls_interval": "Controls: poll interval (seconds)",
+          "system_enabled": "System: poll this section",
+          "system_interval": "System: poll interval (seconds)"
+        },
+        "data_description": {
+          "power_interval": "10 s is plenty for dashboards. Lower values mean more traffic to the dongle.",
+          "energy_interval": "kWh counters change slowly, so 60 s or more is fine."
         }
       }
     },
     "error": {
       "cannot_connect": "Could not open a TCP connection. Check the IP and that port 8899 is reachable.",
       "no_response": "Connected, but the device didn't answer any register reads. Another client (GivTCP?) may be holding the connection.",
-      "unknown": "Unexpected error \u2014 see the Home Assistant log."
+      "unknown": "Unexpected error — see the Home Assistant log."
     },
     "abort": {
       "already_configured": "This device is already configured (IP updated if it changed)."
@@ -24,9 +42,17 @@
     "step": {
       "init": {
         "title": "GivEnergy Gateway Modbus Coms options",
+        "description": "Turn sections on or off and set how often each one is polled. Saving reloads the integration. Entities from sections you turn off are removed.",
         "data": {
-          "scan_interval": "Poll interval (seconds)",
-          "slow_every": "Read settings registers every N polls"
+          "device_name": "Device name",
+          "power_enabled": "Power: poll this section",
+          "power_interval": "Power: poll interval (seconds)",
+          "energy_enabled": "Energy: poll this section",
+          "energy_interval": "Energy: poll interval (seconds)",
+          "controls_enabled": "Controls: poll this section",
+          "controls_interval": "Controls: poll interval (seconds)",
+          "system_enabled": "System: poll this section",
+          "system_interval": "System: poll interval (seconds)"
         }
       }
     }

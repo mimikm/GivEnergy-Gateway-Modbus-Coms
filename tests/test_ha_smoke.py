@@ -29,6 +29,7 @@ class _Generic:
 class Coordinator(_Generic):
     def __init__(self, hass, logger, config_entry=None, name=None, update_interval=None):
         self.hass, self.config_entry = hass, config_entry
+        self.update_interval = update_interval
         self.listeners = 0
 
     async def async_config_entry_first_refresh(self):
@@ -70,6 +71,9 @@ _mod("homeassistant.helpers.config_validation", string=str)
 _mod("homeassistant.helpers.update_coordinator", DataUpdateCoordinator=Coordinator,
      CoordinatorEntity=CoordinatorEntity, UpdateFailed=Exception)
 _mod("homeassistant.helpers.device_registry", DeviceInfo=dict)
+_mod("homeassistant.helpers.entity_registry")
+sys.modules["homeassistant.helpers"].device_registry = sys.modules["homeassistant.helpers.device_registry"]
+sys.modules["homeassistant.helpers"].entity_registry = sys.modules["homeassistant.helpers.entity_registry"]
 _mod("homeassistant.helpers.entity_platform", AddEntitiesCallback=object)
 _mod("homeassistant.components.sensor", SensorEntity=object, SensorDeviceClass=SensorDeviceClass,
      SensorStateClass=SensorStateClass)
@@ -91,6 +95,8 @@ from custom_components.givenergy_modbus import (  # noqa: E402
 from custom_components.givenergy_modbus.client import GivEnergyClient  # noqa: E402
 from custom_components.givenergy_modbus.coordinator import GivEnergyCoordinator  # noqa: E402
 from custom_components.givenergy_modbus.device import GivEnergyDevice  # noqa: E402
+from custom_components.givenergy_modbus.const import section_settings  # noqa: E402
+from custom_components.givenergy_modbus.plan import build_plan  # noqa: E402
 
 
 class Entry:
@@ -100,14 +106,30 @@ class Entry:
     options = {}
 
 
-async def build(dongle):
+class Polls:
+    """Wraps device.poll to record which blocks each cycle asked for."""
+
+    def __init__(self, dev):
+        self.calls = []
+        orig = dev.poll
+
+        async def poll(keys=None, batteries=True):
+            self.calls.append((set(keys) if keys is not None else None, batteries))
+            await orig(keys, batteries)
+        dev.poll = poll
+
+
+async def build(dongle, options=None):
     server = await asyncio.start_server(dongle.handle, "127.0.0.1", 0)
     port = server.sockets[0].getsockname()[1]
     client = GivEnergyClient("127.0.0.1", port, timeout=0.5)
     dev = GivEnergyDevice(client)
     await dev.probe()
     entry = Entry()
-    coord = GivEnergyCoordinator(None, entry, dev, 15)
+    settings = section_settings(options or {})
+    plan = build_plan(dev, {s for s, c in settings.items() if c.enabled})
+    dev.polls = Polls(dev)
+    coord = GivEnergyCoordinator(None, entry, dev, plan, settings, "GivEnergy Hybrid")
     await coord.async_config_entry_first_refresh()
     entry.runtime_data = integ.RuntimeData(dev, coord)
     ents = {}
@@ -168,6 +190,59 @@ def test_aio_extended_slots():
             assert ents["time"]["charge_slot_2_start"].native_value == dtime(23, 0)
             assert "charge_power_percent" in ents["number"]
             assert dev.battery_serials == {}
+        finally:
+            await client.close()
+            server.close()
+
+    asyncio.run(go())
+
+
+def test_sections_devices_and_polling():
+    dongle = gen1_hybrid()
+
+    async def go():
+        server, client, dev, coord, entry, ents = await build(dongle)
+        try:
+            s = ents["sensor"]
+            assert s["p_grid"]._attr_device_info["name"] == "GivEnergy Hybrid Power"
+            assert s["e_import_today"]._attr_device_info["name"] == "GivEnergy Hybrid Energy"
+            assert s["v_ac1"]._attr_device_info["name"] == "GivEnergy Hybrid"  # System = main device
+            assert s["battery_soc"]._attr_device_info["name"] == "GivEnergy Hybrid Power"
+            assert s["v_out"]._attr_device_info["name"] == "GivEnergy Hybrid Battery 1"
+            assert ents["switch"]["enable_charge"]._attr_device_info["name"] == "GivEnergy Hybrid Controls"
+            assert ents["button"]["reprobe"]._attr_device_info["name"] == "GivEnergy Hybrid"
+            assert coord.update_interval.total_seconds() == 10  # gcd(10, 60, 60, 30)
+            keys, batteries = dev.polls.calls[0]
+            assert {"IR0", "IR180", "HR0", "HR60"} <= keys and batteries
+            # second cycle straight away: only Power is due → IR0 only, no HR, no packs
+            coord._last = {k: v - 10 for k, v in coord._last.items()}
+            await coord._async_update_data()
+            keys, batteries = dev.polls.calls[-1]
+            assert keys == {"IR0"} and not batteries
+        finally:
+            await client.close()
+            server.close()
+
+    asyncio.run(go())
+
+
+def test_disabled_sections_not_created_or_polled():
+    dongle = gen1_hybrid()
+    opts = {"controls_enabled": False, "system_enabled": False, "energy_enabled": True,
+            "energy_interval": 120, "power_interval": 15}
+
+    async def go():
+        server, client, dev, coord, entry, ents = await build(dongle, opts)
+        try:
+            assert ents["switch"] == {} and ents["number"] == {} and ents["select"] == {} and ents["time"] == {}
+            s = ents["sensor"]
+            assert "p_grid" in s and "e_pv_total" in s
+            assert "v_ac1" not in s and "v_out" not in s and "fault_code" not in s
+            assert coord.update_interval.total_seconds() == 15
+            keys, batteries = dev.polls.calls[0]
+            assert keys == {"IR0", "IR180"} and not batteries  # no HR blocks, no packs
+            assert coord.plan.unique_keys() >= {"p_grid", "e_pv_total"}
+            assert "enable_charge" not in coord.plan.unique_keys()
         finally:
             await client.close()
             server.close()

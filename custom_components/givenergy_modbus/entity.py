@@ -1,4 +1,13 @@
-"""Base entity + device registry helpers."""
+"""Base entities and the per-section device layout.
+
+Device tree for one config entry (name prefix chosen by the user):
+
+    GivEnergy Gateway              ← main device: System section + Re-probe button
+    ├── GivEnergy Gateway Power
+    ├── GivEnergy Gateway Energy
+    ├── GivEnergy Gateway Controls
+    └── GivEnergy Gateway Battery 1 (LV packs, System section)
+"""
 from __future__ import annotations
 
 from homeassistant.helpers.device_registry import DeviceInfo
@@ -6,38 +15,46 @@ from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
 from .const import DOMAIN
 from .coordinator import GivEnergyCoordinator
+from .registers import SECTION_LABELS, SECTION_SYSTEM
 
 
-def main_device_info(coordinator: GivEnergyCoordinator) -> DeviceInfo:
+def section_identifier(serial: str, section: str) -> str:
+    return serial if section == SECTION_SYSTEM else f"{serial}_{section}"
+
+
+def section_device_info(coordinator: GivEnergyCoordinator, section: str) -> DeviceInfo:
     info = coordinator.device.info
+    base = coordinator.display_name
+    if section == SECTION_SYSTEM:
+        return DeviceInfo(
+            identifiers={(DOMAIN, info.serial)},
+            manufacturer="GivEnergy",
+            model=info.model,
+            model_id=info.device_type_code,
+            name=base,
+            serial_number=info.serial,
+            sw_version=info.firmware,
+        )
+    label = SECTION_LABELS[section]
     return DeviceInfo(
-        identifiers={(DOMAIN, info.serial)},
+        identifiers={(DOMAIN, section_identifier(info.serial, section))},
         manufacturer="GivEnergy",
-        model=info.model,
-        model_id=info.device_type_code,
-        name=f"GivEnergy {info.model} {info.serial}",
-        serial_number=info.serial,
-        sw_version=info.firmware,
-        configuration_url=None,
+        model=f"{info.model} · {label}",
+        name=f"{base} {label}",
+        via_device=(DOMAIN, info.serial),
     )
 
 
 def battery_device_info(coordinator: GivEnergyCoordinator, addr: int) -> DeviceInfo:
     serial = coordinator.device.battery_serials[addr]
-    n = addr - 0x31
     return DeviceInfo(
         identifiers={(DOMAIN, serial)},
         manufacturer="GivEnergy",
         model="LV battery",
-        name=f"GivEnergy battery {n} {serial}",
+        name=f"{coordinator.display_name} Battery {addr - 0x31}",
         serial_number=serial,
         via_device=(DOMAIN, coordinator.device.info.serial),
     )
-
-
-def reg_available(coordinator: GivEnergyCoordinator, input_regs: bool, reg: int) -> bool:
-    dev = coordinator.device
-    return any(b.input == input_regs and b.contains(reg) and b.key in dev.blocks_ok for b in dev.blocks)
 
 
 class GivEnergyEntity(CoordinatorEntity[GivEnergyCoordinator]):
@@ -54,20 +71,16 @@ class GivEnergyEntity(CoordinatorEntity[GivEnergyCoordinator]):
 
 
 def controls_for(coordinator: GivEnergyCoordinator, platform: str):
-    from .registers import CONTROLS, control_applies
-
-    dev = coordinator.device
-    return [
-        c for c in CONTROLS
-        if c.platform == platform and control_applies(c, dev.info.family, dev.blocks_ok, dev.extended_slots)
-    ]
+    return [c for c in coordinator.plan.controls if c.platform == platform]
 
 
 class GivEnergyControl(GivEnergyEntity):
-    """Entity bound to one holding register."""
+    """Entity bound to one holding register, on the Controls device."""
 
     def __init__(self, coordinator: GivEnergyCoordinator, control) -> None:
-        super().__init__(coordinator, control.key, control.name, main_device_info(coordinator))
+        from .registers import SECTION_CONTROLS
+
+        super().__init__(coordinator, control.key, control.name, section_device_info(coordinator, SECTION_CONTROLS))
         self._control = control
         if control.icon:
             self._attr_icon = control.icon

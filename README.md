@@ -52,13 +52,31 @@ A GivEnergy dongle or Gateway serves **one TCP client at a time** on port 8899. 
 1. Click **Open in HACS** above. Or in HACS open ⋮ → **Custom repositories**, add `https://github.com/mimikm/GivEnergy-Gateway-Modbus-Coms-` with category **Integration**.
 2. Download **GivEnergy Gateway Modbus Coms** and restart Home Assistant.
 3. Click **Add integration** above, or go to Settings → Devices & services → Add integration → **GivEnergy Gateway Modbus Coms**.
-4. Enter the IP address, the port (default **8899**) and the poll interval (default 15 s).
+4. Enter the IP address and port (default **8899**). The integration probes the device.
+5. Choose a device name, and pick which of the four sections to poll and how often (see below).
 
 ### Manual
 
 Download `givenergy_modbus.zip` from the [latest release](https://github.com/mimikm/GivEnergy-Gateway-Modbus-Coms-/releases/latest), unzip it into `/config/custom_components/givenergy_modbus/`, then restart Home Assistant.
 
 Add each dongle or Gateway as a separate entry. A Gateway and the AIO behind it are two separate entries.
+
+## Sections: four devices, polled the way you choose
+
+Entities are split into four groups. Each group is its own device in Home Assistant:
+
+| Device | Section | What's in it | Default poll |
+|---|---|---|---|
+| **GivEnergy Gateway Power** | Power | Live power flows (W): grid, PV, load, battery/AIO, plus SOC | 10 s |
+| **GivEnergy Gateway Energy** | Energy | Today and lifetime kWh counters, ready for the Energy dashboard | 60 s |
+| **GivEnergy Gateway Controls** | Controls | Battery mode, enables, SOC targets, reserve, rate limits, pause mode, slot times | 60 s |
+| **GivEnergy Gateway** | System | Status, voltages, currents, frequency, temperatures, faults, firmware, the Re-probe button, and battery packs (*GivEnergy Gateway Battery 1…*) | 30 s |
+
+- The device name ("GivEnergy Gateway" above) is yours to choose. It's the prefix for all four devices and their entity IDs, e.g. `sensor.givenergy_gateway_power_grid_power`.
+- Each section can be **turned off**. A section that's off is **not polled at all**: only the register blocks the enabled sections need are read. Its entities and its device are removed.
+- Each section has its **own poll interval** (5–3600 s). For example, Power every 5 s for a live dashboard, Energy every 5 minutes.
+- You can change all of this later under **Settings → Devices & services → GivEnergy Gateway Modbus Coms → Configure**. Saving reloads the integration.
+- Entities keep their unique IDs when you change sections, so history and dashboards survive.
 
 ## How probing works
 

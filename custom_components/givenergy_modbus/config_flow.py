@@ -1,4 +1,4 @@
-"""Config flow: type an IP + port, we probe and work out what it is."""
+"""Config flow: IP + port → probe → name and pick which sections to poll."""
 from __future__ import annotations
 
 import logging
@@ -7,19 +7,23 @@ from typing import Any
 import voluptuous as vol
 
 from homeassistant.config_entries import ConfigEntry, ConfigFlow, ConfigFlowResult, OptionsFlow
-from homeassistant.const import CONF_HOST, CONF_PORT, CONF_SCAN_INTERVAL
+from homeassistant.const import CONF_HOST, CONF_PORT
 from homeassistant.core import callback
 
 from .client import GivEnergyClient, GivEnergyConnectionError, GivEnergyError
 from .const import (
-    CONF_SLOW_EVERY,
+    CONF_DEVICE_NAME,
     DEFAULT_PORT,
-    DEFAULT_SCAN_INTERVAL,
-    DEFAULT_SLOW_EVERY,
     DOMAIN,
-    MIN_SCAN_INTERVAL,
+    MAX_INTERVAL,
+    MIN_INTERVAL,
+    conf_enabled,
+    conf_interval,
+    default_device_name,
+    section_settings,
 )
 from .device import GivEnergyDevice
+from .registers import SECTIONS
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -34,44 +38,70 @@ async def _probe(host: str, port: int) -> GivEnergyDevice:
     return device
 
 
+def _sections_schema(current: dict, default_name: str) -> vol.Schema:
+    settings = section_settings(current)
+    fields: dict = {vol.Required(CONF_DEVICE_NAME, default=current.get(CONF_DEVICE_NAME) or default_name): str}
+    for s in SECTIONS:
+        fields[vol.Required(conf_enabled(s), default=settings[s].enabled)] = bool
+        fields[vol.Required(conf_interval(s), default=settings[s].interval)] = vol.All(
+            vol.Coerce(int), vol.Range(MIN_INTERVAL, MAX_INTERVAL)
+        )
+    return vol.Schema(fields)
+
+
 class GivEnergyModbusConfigFlow(ConfigFlow, domain=DOMAIN):
     VERSION = 1
+
+    def __init__(self) -> None:
+        self._host: str = ""
+        self._port: int = DEFAULT_PORT
+        self._device: GivEnergyDevice | None = None
 
     async def async_step_user(self, user_input: dict[str, Any] | None = None) -> ConfigFlowResult:
         errors: dict[str, str] = {}
         if user_input is not None:
-            host = user_input[CONF_HOST].strip()
-            port = user_input[CONF_PORT]
+            self._host = user_input[CONF_HOST].strip()
+            self._port = user_input[CONF_PORT]
             try:
-                device = await _probe(host, port)
+                self._device = await _probe(self._host, self._port)
             except GivEnergyConnectionError:
                 errors["base"] = "cannot_connect"
             except GivEnergyError as err:
-                _LOGGER.warning("Probe of %s:%s failed: %s", host, port, err)
+                _LOGGER.warning("Probe of %s:%s failed: %s", self._host, self._port, err)
                 errors["base"] = "no_response"
             except Exception:  # noqa: BLE001
-                _LOGGER.exception("Unexpected error probing %s", host)
+                _LOGGER.exception("Unexpected error probing %s", self._host)
                 errors["base"] = "unknown"
             else:
-                info = device.info
-                await self.async_set_unique_id(info.serial or f"{host}:{port}")
-                self._abort_if_unique_id_configured(updates={CONF_HOST: host, CONF_PORT: port})
-                blocks = ", ".join(sorted(device.blocks_ok))
-                _LOGGER.info("Probe OK: %s %s, blocks %s, batteries %s",
-                             info.model, info.serial, blocks, list(device.battery_serials.values()))
-                return self.async_create_entry(
-                    title=f"GivEnergy {info.model} {info.serial}",
-                    data={CONF_HOST: host, CONF_PORT: port,
-                          CONF_SCAN_INTERVAL: user_input[CONF_SCAN_INTERVAL]},
-                )
+                info = self._device.info
+                await self.async_set_unique_id(info.serial or f"{self._host}:{self._port}")
+                self._abort_if_unique_id_configured(updates={CONF_HOST: self._host, CONF_PORT: self._port})
+                return await self.async_step_sections()
 
         schema = vol.Schema({
             vol.Required(CONF_HOST, default=(user_input or {}).get(CONF_HOST, "")): str,
             vol.Required(CONF_PORT, default=DEFAULT_PORT): vol.All(vol.Coerce(int), vol.Range(1, 65535)),
-            vol.Required(CONF_SCAN_INTERVAL, default=DEFAULT_SCAN_INTERVAL):
-                vol.All(vol.Coerce(int), vol.Range(MIN_SCAN_INTERVAL, 3600)),
         })
         return self.async_show_form(step_id="user", data_schema=schema, errors=errors)
+
+    async def async_step_sections(self, user_input: dict[str, Any] | None = None) -> ConfigFlowResult:
+        assert self._device is not None
+        info = self._device.info
+        if user_input is not None:
+            return self.async_create_entry(
+                title=user_input[CONF_DEVICE_NAME],
+                data={CONF_HOST: self._host, CONF_PORT: self._port},
+                options=user_input,
+            )
+        return self.async_show_form(
+            step_id="sections",
+            data_schema=_sections_schema({}, default_device_name(info)),
+            description_placeholders={
+                "model": info.model,
+                "serial": info.serial,
+                "batteries": str(len(self._device.battery_serials)),
+            },
+        )
 
     @staticmethod
     @callback
@@ -86,10 +116,5 @@ class GivEnergyOptionsFlow(OptionsFlow):
         cur = {**self.config_entry.data, **self.config_entry.options}
         return self.async_show_form(
             step_id="init",
-            data_schema=vol.Schema({
-                vol.Required(CONF_SCAN_INTERVAL, default=cur.get(CONF_SCAN_INTERVAL, DEFAULT_SCAN_INTERVAL)):
-                    vol.All(vol.Coerce(int), vol.Range(MIN_SCAN_INTERVAL, 3600)),
-                vol.Required(CONF_SLOW_EVERY, default=cur.get(CONF_SLOW_EVERY, DEFAULT_SLOW_EVERY)):
-                    vol.All(vol.Coerce(int), vol.Range(1, 60)),
-            }),
+            data_schema=_sections_schema(cur, self.config_entry.title),
         )

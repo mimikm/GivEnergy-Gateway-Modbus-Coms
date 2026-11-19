@@ -8,26 +8,29 @@ import voluptuous as vol
 
 from homeassistant.components import persistent_notification
 from homeassistant.config_entries import ConfigEntry
-from homeassistant.const import CONF_HOST, CONF_PORT, CONF_SCAN_INTERVAL
+from homeassistant.const import CONF_HOST, CONF_PORT
 from homeassistant.core import HomeAssistant, ServiceCall, ServiceResponse, SupportsResponse
 from homeassistant.exceptions import ConfigEntryNotReady, HomeAssistantError, ServiceValidationError
 import homeassistant.helpers.config_validation as cv
+from homeassistant.helpers import device_registry as dr, entity_registry as er
 
 from .client import GivEnergyClient, GivEnergyError
 from .const import (
-    CONF_SLOW_EVERY,
+    CONF_DEVICE_NAME,
     DEFAULT_PORT,
-    DEFAULT_SCAN_INTERVAL,
-    DEFAULT_SLOW_EVERY,
     DOMAIN,
     PLATFORMS,
     SERVICE_PROBE,
     SERVICE_READ,
     SERVICE_WRITE,
+    default_device_name,
+    section_settings,
 )
 from .coordinator import GivEnergyCoordinator
 from .device import GivEnergyDevice
-from .registers import WRITE_SAFE_REGISTERS
+from .entity import section_identifier
+from .plan import build_plan
+from .registers import SECTION_SYSTEM, SECTIONS, WRITE_SAFE_REGISTERS
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -44,7 +47,7 @@ type GivEnergyConfigEntry = ConfigEntry[RuntimeData]
 async def async_setup_entry(hass: HomeAssistant, entry: GivEnergyConfigEntry) -> bool:
     opts = {**entry.data, **entry.options}
     client = GivEnergyClient(entry.data[CONF_HOST], entry.data.get(CONF_PORT, DEFAULT_PORT))
-    device = GivEnergyDevice(client, opts.get(CONF_SLOW_EVERY, DEFAULT_SLOW_EVERY))
+    device = GivEnergyDevice(client)
     try:
         await device.probe()
     except GivEnergyError as err:
@@ -54,7 +57,14 @@ async def async_setup_entry(hass: HomeAssistant, entry: GivEnergyConfigEntry) ->
             "is connected to this device, stop it — the dongle only serves one client."
         ) from err
 
-    coordinator = GivEnergyCoordinator(hass, entry, device, opts.get(CONF_SCAN_INTERVAL, DEFAULT_SCAN_INTERVAL))
+    settings = section_settings(opts)
+    enabled = {s for s, cfg in settings.items() if cfg.enabled}
+    plan = build_plan(device, enabled)
+    name = opts.get(CONF_DEVICE_NAME) or default_device_name(device.info)
+
+    _remove_stale(hass, entry, device, plan, enabled)
+
+    coordinator = GivEnergyCoordinator(hass, entry, device, plan, settings, name)
     await coordinator.async_config_entry_first_refresh()
     entry.runtime_data = RuntimeData(device, coordinator)
 
@@ -62,6 +72,27 @@ async def async_setup_entry(hass: HomeAssistant, entry: GivEnergyConfigEntry) ->
     entry.async_on_unload(entry.add_update_listener(_async_reload))
     _register_services(hass)
     return True
+
+
+def _remove_stale(hass: HomeAssistant, entry: ConfigEntry, device: GivEnergyDevice, plan, enabled: set[str]) -> None:
+    """Drop entities and section devices that the current settings no longer provide."""
+    serial = device.info.serial
+    expected = {f"{serial}_{k}" for k in plan.unique_keys()} | {f"{serial}_reprobe"}
+    for sp in plan.sensors:
+        if sp.bank != "inverter":
+            expected.add(f"{device.battery_serials[sp.bank]}_{sp.field.key}")
+    ent_reg = er.async_get(hass)
+    for ent in er.async_entries_for_config_entry(ent_reg, entry.entry_id):
+        if ent.unique_id not in expected:
+            ent_reg.async_remove(ent.entity_id)
+
+    dev_reg = dr.async_get(hass)
+    stale_ids = [section_identifier(serial, s) for s in SECTIONS if s != SECTION_SYSTEM and s not in enabled]
+    if not plan.poll_batteries:
+        stale_ids += list(device.battery_serials.values())
+    for ident in stale_ids:
+        if (d := dev_reg.async_get_device(identifiers={(DOMAIN, ident)})) is not None:
+            dev_reg.async_update_device(d.id, remove_config_entry_id=entry.entry_id)
 
 
 async def _async_reload(hass: HomeAssistant, entry: ConfigEntry) -> None:

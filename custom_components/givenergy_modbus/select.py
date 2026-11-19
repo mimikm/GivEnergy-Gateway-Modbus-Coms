@@ -6,15 +6,14 @@ from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
 from . import GivEnergyConfigEntry
-from .entity import GivEnergyControl, GivEnergyEntity, controls_for, main_device_info
-from .registers import BATTERY_MODES, CONTROL_FAMILIES
+from .entity import GivEnergyControl, GivEnergyEntity, controls_for, section_device_info
+from .registers import BATTERY_MODES, SECTION_CONTROLS
 
 
 async def async_setup_entry(hass: HomeAssistant, entry: GivEnergyConfigEntry, add: AddEntitiesCallback) -> None:
     coordinator = entry.runtime_data.coordinator
-    dev = coordinator.device
     entities: list[SelectEntity] = [GivEnergySelect(coordinator, c) for c in controls_for(coordinator, "select")]
-    if dev.info.family in CONTROL_FAMILIES and "HR0" in dev.blocks_ok:
+    if coordinator.plan.battery_mode:
         entities.append(BatteryModeSelect(coordinator))
     add(entities)
 
@@ -41,7 +40,7 @@ class BatteryModeSelect(GivEnergyEntity, SelectEntity):
     _attr_options = list(BATTERY_MODES)
 
     def __init__(self, coordinator) -> None:
-        super().__init__(coordinator, "battery_mode", "Battery mode", main_device_info(coordinator))
+        super().__init__(coordinator, "battery_mode", "Battery mode", section_device_info(coordinator, SECTION_CONTROLS))
 
     @property
     def current_option(self) -> str | None:

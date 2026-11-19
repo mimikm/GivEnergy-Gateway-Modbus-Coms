@@ -10,6 +10,18 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Callable
 
+SECTION_POWER = "power"
+SECTION_ENERGY = "energy"
+SECTION_CONTROLS = "controls"
+SECTION_SYSTEM = "system"
+SECTIONS = (SECTION_POWER, SECTION_ENERGY, SECTION_CONTROLS, SECTION_SYSTEM)
+SECTION_LABELS = {
+    SECTION_POWER: "Power",
+    SECTION_ENERGY: "Energy",
+    SECTION_CONTROLS: "Controls",
+    SECTION_SYSTEM: "System",
+}
+
 INVERTER_ADDRESSES = (0x11, 0x31)  # 0x11 canonical; some Gen1/AC answer on 0x31
 BATTERY_ADDRESSES = tuple(range(0x32, 0x38))  # LV packs 1..6
 
@@ -167,6 +179,17 @@ class Field:
     valid: tuple[float, float] | None = None
     custom: Callable[[dict[int, int]], object] | None = None
     precision: int | None = None
+    section: str | None = None  # power | energy | system (derived when None)
+
+    @property
+    def group(self) -> str:
+        if self.section:
+            return self.section
+        if self.device_class == "energy" or self.unit == KWH and self.device_class != "energy_storage":
+            return SECTION_ENERGY
+        if self.device_class == "power":
+            return SECTION_POWER
+        return SECTION_SYSTEM
 
     def decode(self, regs: dict[int, int]):
         if self.custom:
@@ -252,7 +275,7 @@ INVERTER_IR: list[Field] = [
     Field("p_battery", "Battery power", (52,), signed=True, unit=W, device_class="power"),  # +discharge
     Field("p_battery_charge", "Battery charge power", (52,), unit=W, device_class="power", custom=_pos(52, -1)),
     Field("p_battery_discharge", "Battery discharge power", (52,), unit=W, device_class="power", custom=_pos(52, 1)),
-    Field("battery_soc", "Battery SOC", (59,), unit=PCT, device_class="battery", valid=(0, 100)),
+    Field("battery_soc", "Battery SOC", (59,), unit=PCT, device_class="battery", valid=(0, 100), section=SECTION_POWER),
     Field("v_battery", "Battery voltage", (50,), scale=0.01, unit=V, device_class="voltage", valid=(0, 600)),
     Field("i_battery", "Battery current", (51,), signed=True, scale=0.01, unit=A, device_class="current"),
     Field("v_eps", "EPS voltage", (53,), scale=0.1, unit=V, device_class="voltage", enabled=False),
@@ -381,7 +404,7 @@ GATEWAY_IR: list[Field] = [
         f
         for n in (1, 2, 3)
         for f in (
-            Field(f"gw_aio{n}_soc", f"AIO {n} SOC", (1800 + n,), unit=PCT, device_class="battery", valid=(0, 100)),
+            Field(f"gw_aio{n}_soc", f"AIO {n} SOC", (1800 + n,), unit=PCT, device_class="battery", valid=(0, 100), section=SECTION_POWER),
             Field(f"gw_p_aio{n}", f"AIO {n} power", (1815 + n,), signed=True, negate=True, unit=W, device_class="power"),
             _gw_energy(f"gw_e_aio{n}_charge_today", f"AIO {n} charge today", 1702 + 3 * n, enabled=False),
             _gw_energy(f"gw_e_aio{n}_discharge_today", f"AIO {n} discharge today", 1747 + 3 * n, enabled=False),
