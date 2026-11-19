@@ -1,0 +1,32 @@
+name: Release
+
+on:
+  release:
+    types: [published]
+
+permissions:
+  contents: write
+
+jobs:
+  zip:
+    name: Build and attach givenergy_modbus.zip
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Stamp version from tag
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          MANIFEST=custom_components/givenergy_modbus/manifest.json
+          jq --arg v "$VERSION" '.version = $v' "$MANIFEST" > /tmp/manifest.json
+          mv /tmp/manifest.json "$MANIFEST"
+
+      - name: Zip integration
+        run: |
+          cd custom_components/givenergy_modbus
+          zip -r "$GITHUB_WORKSPACE/givenergy_modbus.zip" . -x "__pycache__/*"
+
+      - name: Upload to release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release upload "$GITHUB_REF_NAME" givenergy_modbus.zip --clobber

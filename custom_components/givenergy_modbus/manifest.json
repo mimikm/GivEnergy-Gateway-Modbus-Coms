@@ -9,5 +9,5 @@
   "issue_tracker": "https://github.com/mimikm/GivEnergy-Gateway-Modbus-Coms-/issues",
   "loggers": ["custom_components.givenergy_modbus"],
   "requirements": [],
-  "version": "0.1.0"
+  "version": "0.1.1"
 }
