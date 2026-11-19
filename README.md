@@ -14,6 +14,7 @@
   <a href="https://github.com/mimikm/GivEnergy-Gateway-Modbus-Coms-/actions/workflows/validate.yml"><img src="https://img.shields.io/github/actions/workflow/status/mimikm/GivEnergy-Gateway-Modbus-Coms-/validate.yml?style=for-the-badge&label=validate" alt="Validate"></a>
   <a href="LICENSE"><img src="https://img.shields.io/github/license/mimikm/GivEnergy-Gateway-Modbus-Coms-?style=for-the-badge" alt="License"></a>
   <a href="https://buymeacoffee.com/mimikm"><img src="https://img.shields.io/badge/Buy%20me%20a%20coffee-FFDD00?style=for-the-badge&logo=buymeacoffee&logoColor=black" alt="Buy me a coffee"></a>
+  <a href="https://octopusreferralcode.com"><img src="https://img.shields.io/badge/Octopus%20Energy-Referral-E10A7B?style=for-the-badge" alt="Octopus Energy referral"></a>
 </p>
 
 <p align="center">
@@ -115,6 +116,13 @@ GivEnergy dongles do **not** use standard Modbus TCP. Each request is wrapped in
 - Run the tests locally with `pip install pytest && pytest -q tests`.
 
 The integration icon is in `custom_components/givenergy_modbus/brand/`. Home Assistant 2026.3 and later show it automatically.
+
+## Support the project
+
+If this integration saves you some hassle, you can support it here:
+
+- ☕ **[Buy me a coffee](https://buymeacoffee.com/mimikm)**
+- 🐙 **Switching to Octopus Energy?** Use my referral link at **[octopusreferralcode.com](https://octopusreferralcode.com)**. We both get account credit.
 
 ## Credits
 
