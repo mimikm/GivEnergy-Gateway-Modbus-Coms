@@ -25,7 +25,7 @@ A GivEnergy dongle or Gateway serves **one TCP client at a time** on port 8899. 
 
 ## Install
 
-1. In HACS, open ⋮ → Custom repositories, add `https://github.com/mimikm/GivEnergy-Gateway-Modbus-Coms` with category *Integration*, then install it. To install by hand instead, copy `custom_components/givenergy_modbus` into `/config/custom_components/`.
+1. In HACS, open ⋮ → Custom repositories, add `https://github.com/mimikm/GivEnergy-Gateway-Modbus-Coms-` with category *Integration*, then install it. To install by hand instead, copy `custom_components/givenergy_modbus` into `/config/custom_components/`.
 2. Restart Home Assistant.
 3. Go to Settings → Devices & services → Add integration → **GivEnergy Gateway Modbus Coms**.
 4. Enter the IP address, the port (default **8899**) and the poll interval (default 15 s).

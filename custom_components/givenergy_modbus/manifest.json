@@ -3,10 +3,10 @@
   "name": "GivEnergy Gateway Modbus Coms",
   "codeowners": ["@mimikm"],
   "config_flow": true,
-  "documentation": "https://github.com/mimikm/GivEnergy-Gateway-Modbus-Coms",
+  "documentation": "https://github.com/mimikm/GivEnergy-Gateway-Modbus-Coms-",
   "integration_type": "device",
   "iot_class": "local_polling",
-  "issue_tracker": "https://github.com/mimikm/GivEnergy-Gateway-Modbus-Coms/issues",
+  "issue_tracker": "https://github.com/mimikm/GivEnergy-Gateway-Modbus-Coms-/issues",
   "loggers": ["custom_components.givenergy_modbus"],
   "requirements": [],
   "version": "0.1.0"
