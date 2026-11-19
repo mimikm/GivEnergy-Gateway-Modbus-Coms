@@ -1,0 +1,50 @@
+probe_registers:
+  fields:
+    config_entry:
+      required: true
+      selector:
+        config_entry:
+          integration: givenergy_modbus
+read_registers:
+  fields:
+    config_entry:
+      required: true
+      selector:
+        config_entry:
+          integration: givenergy_modbus
+    register_type:
+      required: true
+      default: input
+      selector:
+        select:
+          options: [input, holding]
+    base:
+      required: true
+      example: 0
+      selector:
+        number: {min: 0, max: 65535, mode: box}
+    count:
+      default: 60
+      selector:
+        number: {min: 1, max: 60, mode: box}
+    device_address:
+      example: 17
+      selector:
+        number: {min: 1, max: 255, mode: box}
+write_register:
+  fields:
+    config_entry:
+      required: true
+      selector:
+        config_entry:
+          integration: givenergy_modbus
+    register:
+      required: true
+      example: 116
+      selector:
+        number: {min: 0, max: 65535, mode: box}
+    value:
+      required: true
+      example: 100
+      selector:
+        number: {min: 0, max: 65535, mode: box}

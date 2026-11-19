@@ -1,1 +1,89 @@
-# GivEneegy-Gateway-Modbus-Coms-
+# GivEnergy Modbus for Home Assistant
+
+Local Home Assistant integration for GivEnergy inverters, All-in-One (AIO) and Gateway over the LAN, with no cloud and no GivTCP container. You type in an IP address and port. The integration probes the device, works out what it is, checks which register blocks it actually answers, and creates entities only for those blocks.
+
+Built in the same shape as [HA-Sofar-Modbus](https://github.com/mimikm/HA-Sofar-Modbus).
+
+> **Beta (v0.1.0).** Reading is the main focus. Controls are limited to an allow-list of registers (see below). Check every control on your own hardware before you hand it to automations or Predbat.
+
+## Supported devices
+
+| Device | Detected as | Live data | Controls |
+|---|---|---|---|
+| Hybrid Gen 1 / 2 / 3 / 4 | `hybrid` | ✅ IR 0-59, 180-239 | ✅ |
+| AC coupled | `ac` | ✅ | ✅ + pause mode, power % |
+| All-in-One | `aio` | ✅ | ✅ + pause mode, power %, 10-slot map |
+| Gateway | `gateway` | ✅ IR 1600-1859 (grid, PV, load, AIO 1-3) | ✅ via HR 0-299, if the Gateway answers them |
+| LV battery packs (0x32-0x37) | per-pack device | ✅ SOC, V, A, temps, cycles, capacity, 16 cell voltages | — |
+| 3-phase, EMS | `three_phase` / `ems` | ⚠️ probe and raw reads only | — |
+
+The device type comes from HR 0 (the device type code). For hybrids, HR 21 (ARM firmware) tells Gen 1, 2 and 3 apart.
+
+## Important: one client per dongle
+
+A GivEnergy dongle or Gateway serves **one TCP client at a time** on port 8899. If GivTCP, another integration or a local-mode app is connected, the probe fails or the responses get mixed up. **Stop GivTCP for any device you add here.** You can keep GivTCP running for your other devices.
+
+## Install
+
+1. In HACS, open ⋮ → Custom repositories, add `https://github.com/mimikm/GivEneegy-Gateway-Modbus-Coms-` with category *Integration*, then install it. To install by hand instead, copy `custom_components/givenergy_modbus` into `/config/custom_components/`.
+2. Restart Home Assistant.
+3. Go to Settings → Devices & services → Add integration → **GivEnergy Modbus**.
+4. Enter the IP address, the port (default **8899**) and the poll interval (default 15 s).
+
+Add each dongle or Gateway as a separate entry. A Gateway and the AIO behind it are two separate entries.
+
+## How probing works
+
+1. The integration reads HR 0-59 at device address `0x11`. If that fails, it retries at `0x31`, which some Gen 1 and AC units use.
+2. It decodes the model, serial and firmware.
+3. It tries each candidate block: IR 0, IR 180, HR 60, HR 120, HR 240 (10-slot map), HR 300 (AC/AIO config) and, for a Gateway, IR 1600-1859. It only polls the blocks that answer.
+4. For hybrid and AC models it scans battery addresses 0x32 upwards until it finds a pack with no valid serial.
+
+Press **Re-probe registers** on the device page to run the probe again, for example after a firmware update.
+
+### Probe service (for mapping unknown devices)
+
+`givenergy_modbus.probe_registers` sweeps every known range: IR 0-359, 1000-1359, 1600-1859, 2040; HR 0-359, 499, 540, 1000, 2040, 4080, 20000; battery, BMU and BCU addresses. It shows a table of what answered as a notification and returns the raw values as the service response.
+
+`givenergy_modbus.read_registers` reads any 1-60 registers at any device address and returns them as a service response. Use it in Developer tools → Actions.
+
+**Download diagnostics** on the integration gives a full register dump. Attach it to an issue if something decodes wrongly.
+
+## Entities
+
+**Inverter / AIO**: status, PV1/PV2 V/A/W, PV power, grid voltage and frequency, grid power (+export / −import), grid import power, grid export power, load, EPS, battery power (+discharge), battery charge power, battery discharge power, SOC, battery V/A, temperatures, fault and warning codes, plus today and lifetime energy (PV, import, export, AC charge, battery charge and discharge, inverter output).
+
+**Gateway**: grid V/A/W, PV, load, Liberty power, AIO total power, AIO charge power, AIO discharge power, per-AIO SOC and power, and today and lifetime energy for import, export, PV, load, AIO and battery. Lifetime totals handle the word-order swap between Gateway firmware V1 and V2 automatically.
+
+**Battery pack**: SOC, voltage, current, min and max temperature, cycles, remaining and full capacity (Ah), remaining energy (kWh), and cell voltages (disabled by default).
+
+### Controls
+
+| Entity | Register(s) | Notes |
+|---|---|---|
+| Battery mode (select) | HR 27 + HR 59 | Eco / Timed Demand / Timed Export, same as GivTCP |
+| Eco mode, Discharge enable, AC charge enable, Charge target enable | HR 27, 59, 96, 20 | switches |
+| Charge target SOC | HR 116 | 4-100 % |
+| Charge slot 1 target SOC | HR 242 | 10-slot devices only |
+| Battery SOC reserve / power cutoff SOC | HR 110 / HR 114 | 4-100 % |
+| Charge / discharge rate limit | HR 111 / HR 112 | raw 0-50 |
+| Charge / discharge power percent | HR 313 / HR 314 | AC, AIO and Gateway only |
+| Battery pause mode | HR 318 | AC, AIO and Gateway only |
+| Charge slot 1 start/end | HR 94 / 95 | time entities |
+| Discharge slot 1 start/end | HR 56 / 57 | |
+| Charge slot 2 start/end | HR 31/32, or HR 243/244 on 10-slot devices | |
+| Discharge slot 2 start/end | HR 44/45, or HR 273/274 on 10-slot devices | |
+
+After every write, the integration reads the register block back, so the entity shows what the inverter actually stored. `write_register` refuses any register not in this table.
+
+## Protocol notes
+
+GivEnergy dongles do **not** use standard Modbus TCP. Each request is wrapped in a `0x5959` header with the adapter serial and an 8-byte padding field, followed by the inner Modbus PDU and a CRC-16/Modbus. Replies include the inverter serial. Reads are limited to 60 registers. The dongle sends a heartbeat about every 3 minutes and drops the link unless the client echoes it within about 5 s. The client here runs a background reader that echoes heartbeats, keeps one request in flight with a 0.25 s gap between requests, and caches the data the inverter pushes on its own.
+
+## Credits
+
+The register maps and protocol details come from [dewet22/givenergy-modbus](https://github.com/dewet22/givenergy-modbus) and the GivTCP async fork by britkat1980. This integration has its own small client and doesn't depend on either library.
+
+## Disclaimer
+
+Not affiliated with GivEnergy. Writing registers changes how your inverter behaves, so use the controls at your own risk.
