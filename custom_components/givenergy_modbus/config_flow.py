@@ -13,6 +13,8 @@ from homeassistant.core import callback
 from .client import GivEnergyClient, GivEnergyConnectionError, GivEnergyError
 from .const import (
     CONF_DEVICE_NAME,
+    CONF_FULL_SCAN,
+    CONF_REPROBE,
     DEFAULT_PORT,
     DOMAIN,
     MAX_INTERVAL,
@@ -111,10 +113,30 @@ class GivEnergyModbusConfigFlow(ConfigFlow, domain=DOMAIN):
 
 class GivEnergyOptionsFlow(OptionsFlow):
     async def async_step_init(self, user_input: dict[str, Any] | None = None) -> ConfigFlowResult:
+        errors: dict[str, str] = {}
+        entry = self.config_entry
         if user_input is not None:
-            return self.async_create_entry(data=user_input)
-        cur = {**self.config_entry.data, **self.config_entry.options}
-        return self.async_show_form(
-            step_id="init",
-            data_schema=_sections_schema(cur, self.config_entry.title),
-        )
+            settings = dict(user_input)
+            reprobe = settings.pop(CONF_REPROBE, False)
+            full_scan = settings.pop(CONF_FULL_SCAN, False)
+            if full_scan:
+                from . import async_full_register_scan
+
+                try:
+                    await async_full_register_scan(self.hass, entry)
+                except (GivEnergyError, AttributeError) as err:
+                    _LOGGER.warning("Full register scan failed: %s", err)
+                    errors["base"] = "scan_failed"
+            if not errors:
+                unchanged = settings == {k: entry.options.get(k) for k in settings} and \
+                    set(entry.options) <= set(settings)
+                if reprobe and unchanged:
+                    # Options listener only reloads on change; a reload is what re-reads the device.
+                    self.hass.config_entries.async_schedule_reload(entry.entry_id)
+                return self.async_create_entry(data=settings)
+        cur = {**entry.data, **entry.options}
+        schema = _sections_schema(cur, entry.title).extend({
+            vol.Optional(CONF_REPROBE, default=False): bool,
+            vol.Optional(CONF_FULL_SCAN, default=False): bool,
+        })
+        return self.async_show_form(step_id="init", data_schema=schema, errors=errors)

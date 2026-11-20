@@ -77,6 +77,9 @@ Entities are split into four groups. Each group is its own device in Home Assist
 - Each section has its **own poll interval** (5–3600 s). For example, Power every 5 s for a live dashboard, Energy every 5 minutes.
 - You can change all of this later under **Settings → Devices & services → GivEnergy Gateway Modbus Coms → Configure**. Saving reloads the integration.
 - Entities keep their unique IDs when you change sections, so history and dashboards survive.
+- The same **Configure** window has two tick-boxes for re-reading the device:
+  - **Re-read device registers on save**: re-detects the model, firmware, register blocks and battery packs, then rebuilds the entities. Use it after a firmware update or after adding a battery.
+  - **Run full register scan now**: sweeps every known register range (up to about a minute) and posts a results table as a notification.
 
 ## How probing works
 

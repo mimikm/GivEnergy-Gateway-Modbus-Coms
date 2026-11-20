@@ -106,6 +106,26 @@ async def async_unload_entry(hass: HomeAssistant, entry: GivEnergyConfigEntry) -
     return ok
 
 
+async def async_full_register_scan(hass: HomeAssistant, entry: GivEnergyConfigEntry) -> dict:
+    """Sweep every known register range and post the result as a notification."""
+    device = entry.runtime_data.device
+    result = await device.deep_probe()
+    info = device.info
+    lines = [f"**{entry.title}**: {info.model} (DTC {info.device_type_code}, serial {info.serial}, fw {info.firmware})",
+             f"Device address {result['address']}", "", "| Block | Result |", "|---|---|"]
+    for key, r in result["blocks"].items():
+        extra = f" ({r['non_zero']} non-zero)" if r["status"] == "ok" else ""
+        lines.append(f"| {key} | {r['status']}{extra} |")
+    for addr, r in result["batteries"].items():
+        if r["status"] == "ok":
+            lines.append(f"| Battery {addr} IR60 | ok, serial `{r.get('serial') or '-'}` |")
+    persistent_notification.async_create(
+        hass, "\n".join(lines), title="GivEnergy register scan", notification_id=f"{DOMAIN}_probe_{entry.entry_id}"
+    )
+    _LOGGER.info("GivEnergy register scan for %s: %s", entry.title, result)
+    return result
+
+
 # ------------------------------------------------------------------- services
 def _entry_from_call(hass: HomeAssistant, call: ServiceCall) -> GivEnergyConfigEntry:
     entry = hass.config_entries.async_get_entry(call.data["config_entry"])
@@ -120,25 +140,10 @@ def _register_services(hass: HomeAssistant) -> None:
 
     async def probe(call: ServiceCall) -> ServiceResponse:
         entry = _entry_from_call(hass, call)
-        device = entry.runtime_data.device
         try:
-            result = await device.deep_probe()
+            return await async_full_register_scan(hass, entry)
         except GivEnergyError as err:
             raise HomeAssistantError(f"Probe failed: {err}") from err
-        info = device.info
-        lines = [f"**{info.model}** (DTC {info.device_type_code}, serial {info.serial}, fw {info.firmware})",
-                 f"Device address {result['address']}", "", "| Block | Result |", "|---|---|"]
-        for key, r in result["blocks"].items():
-            extra = f" ({r['non_zero']} non-zero)" if r["status"] == "ok" else ""
-            lines.append(f"| {key} | {r['status']}{extra} |")
-        for addr, r in result["batteries"].items():
-            if r["status"] == "ok":
-                lines.append(f"| Battery {addr} IR60 | ok, serial `{r.get('serial') or '-'}` |")
-        persistent_notification.async_create(
-            hass, "\n".join(lines), title="GivEnergy register probe", notification_id=f"{DOMAIN}_probe"
-        )
-        _LOGGER.info("GivEnergy probe result for %s: %s", entry.title, result)
-        return result
 
     async def read(call: ServiceCall) -> ServiceResponse:
         entry = _entry_from_call(hass, call)

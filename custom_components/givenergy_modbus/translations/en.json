@@ -42,7 +42,7 @@
     "step": {
       "init": {
         "title": "GivEnergy Gateway Modbus Coms options",
-        "description": "Turn sections on or off and set how often each one is polled. Saving reloads the integration. Entities from sections you turn off are removed.",
+        "description": "Turn sections on or off and set how often each one is polled. Changing a section reloads the integration and removes entities from sections you turn off. Tick the boxes at the bottom to re-read the device's registers.",
         "data": {
           "device_name": "Device name",
           "power_enabled": "Power: poll this section",
@@ -52,9 +52,18 @@
           "controls_enabled": "Controls: poll this section",
           "controls_interval": "Controls: poll interval (seconds)",
           "system_enabled": "System: poll this section",
-          "system_interval": "System: poll interval (seconds)"
+          "system_interval": "System: poll interval (seconds)",
+          "reprobe": "Re-read device registers on save",
+          "full_scan": "Run full register scan now"
+        },
+        "data_description": {
+          "reprobe": "Re-detects the model, firmware, register blocks and battery packs and rebuilds the entities. Use it after a firmware update or after adding a battery.",
+          "full_scan": "Sweeps every known register range (takes up to a minute) and posts the results as a notification. Useful for mapping new registers."
         }
       }
+    },
+    "error": {
+      "scan_failed": "The register scan failed. Check that the device is reachable and that nothing else (GivTCP) is connected to it."
     }
   },
   "services": {
